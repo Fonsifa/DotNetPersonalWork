@@ -74,7 +74,7 @@ namespace ChatWork
                         if (ss[1].Contains("OK")) State = "Succ";
                         else State = "Fail";
                     }
-                    else if(msg.StartsWith("[ROOM]"))
+                    else if(msg.StartsWith("[ROOM]"))//聊天室列表
                     {
                         int length = ss.Length;
                         for(int i=1;i<length;i+=3)
@@ -87,7 +87,7 @@ namespace ChatWork
                         }
                         SendState = true;
                     }
-                    else if(msg.StartsWith("[MSGHIS]"))
+                    else if(msg.StartsWith("[MSGHIS]"))//历史消息
                     {
                         int length = ss.Length;
                         for(int i=1;i<length;i+=4)
@@ -101,17 +101,17 @@ namespace ChatWork
                         }
                         SendState = true;
                     }
-                    else if(msg.StartsWith("[FORBID]"))
+                    else if(msg.StartsWith("[FORBID]"))//禁言
                     {
                         User.Is_Forbid = !User.Is_Forbid;
                     }
-                    else if(msg.StartsWith("[FILESEND]"))
+                    else if(msg.StartsWith("[FILESEND]"))//接受文件
                     {
                         fileRecv.FileName = ss[1];
                         fileRecv.FileSize= Int64.Parse(ss[2]);
                         await RecvFile();
                     }
-                    else if(msg.StartsWith("[USERS]"))
+                    else if(msg.StartsWith("[USERS]"))//用户列表
                     {
                         Console.WriteLine(msg);
                         int length = ss.Length;
@@ -136,20 +136,30 @@ namespace ChatWork
         /// </summary>
         /// <param name="Account"></param>
         /// <param name="Password"></param>
-        public void Regist(string Account, string Password)
+        public async Task<bool> Regist(string Account, string Password)
         {
             State = string.Empty;
             ClientSocket.Send(Encoding.UTF8.GetBytes("[REG]\n"+Account+"\n"+Password));
+            return await Task.Run(() =>
+            {
+                while (string.IsNullOrEmpty(State)) { };
+                return State == "Succ";
+            });
         }
         /// <summary>
         /// 登录
         /// </summary>
         /// <param name="Account"></param>
         /// <param name="Password"></param>
-        public void Login(string Account,string Password)
+        public async Task<bool> Login(string Account,string Password)
         {
             State = string.Empty;
             ClientSocket.Send(Encoding.UTF8.GetBytes("[LOG]\n" + Account + "\n" + Password));
+            return await Task.Run(() =>
+            {
+                while (string.IsNullOrEmpty(State)) { };
+                return State == "Succ";
+            });
         }
         /// <summary>
         /// 获取聊天室信息
@@ -190,12 +200,15 @@ namespace ChatWork
         /// </summary>
         /// <param name="theme"></param>
         /// <param name="content"></param>
-        public bool CreateChatRoom(string theme, string content)
+        public async Task<bool> CreateChatRoom(string theme, string content)
         {
             State = string.Empty;
             ClientSocket.Send(Encoding.UTF8.GetBytes("[CRE]\n" + theme + "\n" + content));
-            while (string.IsNullOrEmpty(State)) { }
-            return State=="Succ";
+            return await Task.Run(() =>
+            {
+                while (string.IsNullOrEmpty(State)) { };
+                return State == "Succ";
+            });
         }
         /// <summary>
         /// 进入聊天室
@@ -213,10 +226,15 @@ namespace ChatWork
         /// 离开聊天室
         /// </summary>
         /// <param name="RoomId"></param>
-        public void LeaveChatRoom(int RoomId)
+        public async Task<bool> LeaveChatRoom(int RoomId)
         {
             State = string.Empty;
             ClientSocket.Send(Encoding.UTF8.GetBytes("[LEA]\n" + RoomId.ToString()));
+            return await Task.Run(() =>
+            {
+                while (string.IsNullOrEmpty(State)) { };
+                return State == "Succ";
+            });
         }
         /// <summary>
         /// 发送消息
@@ -234,35 +252,38 @@ namespace ChatWork
         /// </summary>
         /// <param name="Msg"></param>
         /// <param name="To"></param>
-        public bool SendFile(string FileName)
+        public async Task<bool> SendFile(string FileName)
         {
             State = string.Empty;
-            try
+            return await Task.Run(() =>
             {
-                using (FileStream reader = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.None))
+                try
                 {
-                    long send = 0L, length = reader.Length;
-                    string sendStr = "[FILE]\n" + Path.GetFileName(FileName) + "\n" + length.ToString();
-
-                    string fileName = Path.GetFileName(FileName);
-                    ClientSocket.Send(Encoding.UTF8.GetBytes(sendStr));
-                    int BufferSize = 1024;
-                    byte[] FileBuffer = new byte[BufferSize];
-                    int read, sent;
-                    while (string.IsNullOrEmpty(State)) { }
-                    if(State.Contains("Succ"))
-                    while ((read = reader.Read(FileBuffer, 0, BufferSize)) != 0)
+                    using (FileStream reader = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.None))
                     {
-                        sent = 0;
-                        while ((sent += ClientSocket.Send(FileBuffer, sent, read, SocketFlags.None)) < read)
-                        {
-                            send += (long)sent;
-                        }
+                        long send = 0L, length = reader.Length;
+                        string sendStr = "[FILE]\n" + Path.GetFileName(FileName) + "\n" + length.ToString();
+
+                        string fileName = Path.GetFileName(FileName);
+                        ClientSocket.Send(Encoding.UTF8.GetBytes(sendStr));
+                        int BufferSize = 1024;
+                        byte[] FileBuffer = new byte[BufferSize];
+                        int read, sent;
+                        while (string.IsNullOrEmpty(State)) { }
+                        if (State.Contains("Succ"))
+                            while ((read = reader.Read(FileBuffer, 0, BufferSize)) != 0)
+                            {
+                                sent = 0;
+                                while ((sent += ClientSocket.Send(FileBuffer, sent, read, SocketFlags.None)) < read)
+                                {
+                                    send += (long)sent;
+                                }
+                            }
+                        return true;
                     }
-                    return true;
                 }
-            }
-            catch (Exception) { return false; }
+                catch (Exception) { return false; }
+            });
         }
         /// <summary>
         /// 请求文件

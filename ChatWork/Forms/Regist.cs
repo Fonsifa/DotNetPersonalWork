@@ -16,14 +16,6 @@ namespace ChatWork.Forms
         {
             InitializeComponent();
         }
-        private async Task<bool> WaitSignal()
-        {
-            return await Task.Run(() =>
-            {
-                while (string.IsNullOrEmpty(Program.clientService.State)) { }
-                return Program.clientService.State.Contains("Succ");
-            });
-        }
         private async void Confirm_Click(object sender, EventArgs e)
         {
             string acc = Account_Box.Text;
@@ -43,8 +35,8 @@ namespace ChatWork.Forms
             }
             else
             {
-                Program.clientService.Regist(acc,pass);
-                if (await WaitSignal())
+                var re=await Program.clientService.Regist(acc,pass);
+                if (re)
                 {
                     MessageBox.Show("注册成功！");
                     this.Hide();

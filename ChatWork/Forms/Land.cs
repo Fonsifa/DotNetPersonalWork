@@ -16,18 +16,10 @@ namespace ChatWork
         {
             InitializeComponent();
         }
-        private async Task<bool> WaitSignal()
-        {
-            return await Task.Run(() =>
-            {
-                while (string.IsNullOrEmpty(Program.clientService.State)) {  }
-                return Program.clientService.State.Contains("Succ");
-            });
-        }
         private async void Login_button_Click(object sender, EventArgs e)
         {
-            Program.clientService.Login(Account.Text, Password.Text);
-            if (await WaitSignal())
+            var re=await Program.clientService.Login(Account.Text, Password.Text);
+            if (re)
             {
                 this.Hide();
                 Forms.MainForm mainForm = new Forms.MainForm();

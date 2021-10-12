@@ -63,7 +63,7 @@ namespace ChatServer.Forms
         {
             bool flag = Program.serverService.DeleteRoom(RoomId);
             if (flag) { this.Close(); }
-            else MessageBox.Show("删除失败");
+            else MessageBox.Show("删除失败,可能重复删除");
         }
     }
 }

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Net.Sockets;
 using System.Net;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace ChatServer
 {
@@ -76,7 +77,7 @@ namespace ChatServer
         /// 处理信息
         /// </summary>
         /// <param name="remote"></param>
-        private void RecvMsg(object remote)
+        private async void RecvMsg(object remote)
         {
             string Remote = remote as string;
             Socket connect = SocketsConnected[Remote];
@@ -92,13 +93,13 @@ namespace ChatServer
                     string[] ss = RecvStr.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                     if (RecvStr.StartsWith("[REG]"))//判断是否是客户端发送的登录消息
                     {
-                        if (Regist(ss[1].Trim(),ss[2].Trim()))
+                        if (await Regist(ss[1].Trim(), ss[2].Trim()))
                             connect.Send(Encoding.UTF8.GetBytes("[REG]\nOK"));
                         else connect.Send(Encoding.UTF8.GetBytes("[REG]\nFail"));
                     }
-                    else if(RecvStr.StartsWith("[LOG]"))
+                    else if (RecvStr.StartsWith("[LOG]"))
                     {
-                        if (Login(ss[1].Trim(), ss[2].Trim()))
+                        if (await Login(ss[1].Trim(), ss[2].Trim()))
                         {
                             connect.Send(Encoding.UTF8.GetBytes("[LOG]\nOK"));
                             User user = new User();
@@ -109,7 +110,7 @@ namespace ChatServer
                         }
                         else connect.Send(Encoding.UTF8.GetBytes("[LOG]\nFail"));
                     }
-                    else if(RecvStr.StartsWith("[ROOM]"))
+                    else if (RecvStr.StartsWith("[ROOM]"))
                     {
                         connect.Send(Encoding.UTF8.GetBytes("[ROOM]\n" + GetAllChatRoom().ToString()));
                     }
@@ -117,43 +118,42 @@ namespace ChatServer
                     {
                         connect.Send(Encoding.UTF8.GetBytes("[MSGHIS]\n" + GetMsg(Int32.Parse(ss[1])).ToString()));
                     }
-                    else if(RecvStr.StartsWith("[MSG]"))
+                    else if (RecvStr.StartsWith("[MSG]"))
                     {
                         if (UserOnline[Remote].Is_Forbid != true)
                         {
-                            if(!ss[1].Contains(":"))//如果含有：，表示是私聊对象
-                            TransMsg(Remote, ss[2], ss[1], false);
+                            if (!ss[1].Contains(":"))//如果含有：，表示是私聊对象
+                                TransMsg(Remote, ss[2], ss[1], false);
                             else TransMsg(Remote, ss[2], ss[1], true);
                         }
                     }
-                    else if(RecvStr.StartsWith("[CRE]"))
+                    else if (RecvStr.StartsWith("[CRE]"))
                     {
-                        if(CreateChatRoom(ss[1], ss[2]))
+                        if (await CreateChatRoom(ss[1], ss[2]))
                         {
                             connect.Send(Encoding.UTF8.GetBytes("[CRE]\nOK"));
                         }
                         else connect.Send(Encoding.UTF8.GetBytes("[CRE]\nFail"));
                     }
-                    else if(RecvStr.StartsWith("[ENT]"))
+                    else if (RecvStr.StartsWith("[ENT]"))
                     {
                         if (EnterChatRoom(Remote, Int32.Parse(ss[1])))
                             connect.Send(Encoding.UTF8.GetBytes("[ENT]\nOK"));
                         else connect.Send(Encoding.UTF8.GetBytes("[ENT]\nFail"));
                     }
-                    else if(RecvStr.StartsWith("[LEA]"))
+                    else if (RecvStr.StartsWith("[LEA]"))
                     {
                         Console.WriteLine(RecvStr);
                         if (LeaveChatRoom(Remote, Int32.Parse(ss[1])))
                             connect.Send(Encoding.UTF8.GetBytes("[LEA]\nOK"));
                         else connect.Send(Encoding.UTF8.GetBytes("[LEA]\nFail"));
                     }
-                    else if(RecvStr.StartsWith("[FILE]"))
+                    else if (RecvStr.StartsWith("[FILE]"))
                     {
                         string fileName = ss[1];
                         FileSize = Int64.Parse(ss[2]);
                         connect.Send(Encoding.UTF8.GetBytes("[FILE]\nOK"));
-                        RecvFile(fileName,Remote);
-                        TransMsg(Remote, $@"File:///D:/test/{fileName}",Convert.ToString(UserOnline[Remote].IdRoom), false);
+                        await RecvFile(fileName, Remote);                       
                     }
                     else if(RecvStr.StartsWith("[USERS]"))
                     {
@@ -161,7 +161,7 @@ namespace ChatServer
                     }
                     else if(RecvStr.StartsWith("[REQ]"))
                     {
-                        SendFile(ss[1], Remote);
+                        await SendFile(ss[1], Remote);
                     }
                 }
                 catch(Exception)
@@ -331,79 +331,85 @@ namespace ChatServer
         /// </summary>
         /// <param name="Account"></param>
         /// <param name="Password"></param>
-        public bool Regist(string Account, string Password)
+        public async Task<bool> Regist(string Account, string Password)
         {
             int flag = 0;
-            using (MySqlConnection conn = GetConnection())
+            return await Task.Run(() =>
             {
-                conn.Open();
-                using (MySqlCommand UserInsert = new MySqlCommand($"insert into Users(Account,Password,IsManager,Isforbid)"+
-                    $"values('{Account}','{Password}',{false},{false})", conn))
+                using (MySqlConnection conn = GetConnection())
                 {
-                    try
+                    conn.Open();
+                    using (MySqlCommand UserInsert = new MySqlCommand($"insert into Users(Account,Password,IsManager,Isforbid)" +
+                        $"values('{Account}','{Password}',{false},{false})", conn))
                     {
-                        flag = UserInsert.ExecuteNonQuery();
-                    }catch(Exception )
-                    {}
+                        try
+                        {
+                            flag = UserInsert.ExecuteNonQuery();
+                        }
+                        catch (Exception)
+                        { }
+                    }
                 }
-            }
-            if (flag > 0)
-            {
-                return true;
-            }
-            return false;
+                return flag > 0;
+            });
+            
         }
         /// <summary>
         /// 登录
         /// </summary>
         /// <param name="Account"></param>
         /// <param name="Password"></param>
-        public bool Login(string Account, string Password)
+        public async Task<bool> Login(string Account, string Password)
         {
             bool flag = false;
-            using (MySqlConnection conn = GetConnection())
+            return await Task.Run(() =>
             {
-                conn.Open();
-                using (MySqlCommand MyCmd = new MySqlCommand($"select password from users where account=" +
-                        $"('{Account}')", conn))
+                using (MySqlConnection conn = GetConnection())
                 {
-                    MySqlDataReader reader = MyCmd.ExecuteReader();
-                    if (reader.HasRows)
+                    conn.Open();
+                    using (MySqlCommand MyCmd = new MySqlCommand($"select password from users where account=" +
+                            $"('{Account}')", conn))
                     {
-                         reader.Read();
-                         if (Password == reader.GetString(0)) flag = true;
+                        MySqlDataReader reader = MyCmd.ExecuteReader();
+                        if (reader.HasRows)
+                        {
+                            reader.Read();
+                            if (Password == reader.GetString(0)) flag = true;
+                        }
+                        reader.Close();
                     }
-                    reader.Close();
                 }
-            }
-            return flag;
+                return flag;
+            });
         }
         /// <summary>
         /// 创建聊天室
         /// </summary>
         /// <param name="theme"></param>
         /// <param name="content"></param>
-        public bool CreateChatRoom(string theme, string content)
+        public async Task<bool> CreateChatRoom(string theme, string content)
         {
             int flag = 0;
-            using (MySqlConnection conn = GetConnection())
+            return await Task.Run(()=> 
             {
-                conn.Open();
-                using (MySqlCommand MyCmd = new MySqlCommand($"insert into chatrooms(theme,content) value" +
-                    $"('{theme}','{content}')", conn))
+                using (MySqlConnection conn = GetConnection())
                 {
-                    try
+                    conn.Open();
+                    using (MySqlCommand MyCmd = new MySqlCommand($"insert into chatrooms(theme,content) value" +
+                        $"('{theme}','{content}')", conn))
                     {
-                        flag = MyCmd.ExecuteNonQuery();
-                    }
-                    catch (Exception)
-                    {
-                        Console.WriteLine("创建失败");
+                        try
+                        {
+                            flag = MyCmd.ExecuteNonQuery();
+                        }
+                        catch (Exception)
+                        {
+                            Console.WriteLine("创建失败");
+                        }
                     }
                 }
-            }
-            if (flag > 0) return true;
-            return false;
+                return flag > 0;
+            });
         }
         /// <summary>
         /// 获取Id
@@ -509,57 +515,76 @@ namespace ChatServer
         /// </summary>
         /// <param name="fileName"></param>
         /// <param name="remote"></param>
-        public void RecvFile(string fileName,string remote)
+        public async Task<bool> RecvFile(string fileName,string Remote)
         {
-            long receive = 0L;
-            string path = "D:/test";
-            long length = FileSize;
-            byte[] buffer = new byte[1024];
-            using (FileStream writer = new FileStream(Path.Combine(path, fileName), FileMode.Create, FileAccess.Write,
-                FileShare.None))
+            return await Task.Run(() =>
             {
-                int received;
-                while (receive < length)
+                var connect = SocketsConnected[Remote];
+                long receive = 0L;
+                string path = "D:/test";
+                if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+                long length = FileSize;
+                byte[] buffer = new byte[1024];
+                try
                 {
-                    received = SocketsConnected[remote].Receive(buffer);
-                    writer.Write(buffer, 0, received);
-                    writer.Flush();
-                    receive += (long)received;
+                    using (FileStream writer = new FileStream(Path.Combine(path, fileName), FileMode.Create,
+                        FileAccess.Write,FileShare.None))
+                    {
+                        int received;
+                        Console.WriteLine(receive+length);
+                        while (receive < length)
+                        {
+                            received = SocketsConnected[Remote].Receive(buffer);
+                            writer.Write(buffer, 0, received);
+                            writer.Flush();
+                            receive += (long)received;
+                        }
+                    }
+                    
+                    TransMsg(Remote, $@"File:///D:/test/{fileName}", Convert.ToString(UserOnline[Remote].IdRoom), false);
+                    return true;
                 }
-            }
+                catch (Exception)
+                {
+                    return false; 
+                }
+            });
         }
         /// <summary>
         /// 发送文件
         /// </summary>
         /// <param name="FileName"></param>
         /// <returns></returns>
-        public bool SendFile(string FileName,string remote)
+        public async Task<bool> SendFile(string FileName,string remote)
         {
             var ClientSocket = SocketsConnected[remote];
             FileName = FileName.Substring(FileName.IndexOf('D'));
-            try
+            return await Task.Run(() =>
             {
-                using (FileStream reader = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.None))
+                try
                 {
-                    long send = 0L, length = reader.Length;
-                    string sendStr = "[FILESEND]\n" + Path.GetFileName(FileName) + "\n" + length.ToString();
-                    string fileName = Path.GetFileName(FileName);
-                    ClientSocket.Send(Encoding.UTF8.GetBytes(sendStr));
-                    int BufferSize = 1024;
-                    byte[] FileBuffer = new byte[BufferSize];
-                    int read, sent;
-                    while ((read = reader.Read(FileBuffer, 0, BufferSize)) != 0)
+                    using (FileStream reader = new FileStream(FileName, FileMode.Open, FileAccess.Read, FileShare.None))
                     {
-                         sent = 0;
-                         while ((sent += ClientSocket.Send(FileBuffer, sent, read, SocketFlags.None)) < read)
-                         {
-                              send += (long)sent;
-                         }
+                        long send = 0L, length = reader.Length;
+                        string sendStr = "[FILESEND]\n" + Path.GetFileName(FileName) + "\n" + length.ToString();
+                        string fileName = Path.GetFileName(FileName);
+                        ClientSocket.Send(Encoding.UTF8.GetBytes(sendStr));
+                        int BufferSize = 1024;
+                        byte[] FileBuffer = new byte[BufferSize];
+                        int read, sent;
+                        while ((read = reader.Read(FileBuffer, 0, BufferSize)) != 0)
+                        {
+                            sent = 0;
+                            while ((sent += ClientSocket.Send(FileBuffer, sent, read, SocketFlags.None)) < read)
+                            {
+                                send += (long)sent;
+                            }
+                        }
+                        return true;
                     }
-                    return true;
                 }
-            }
-            catch (Exception ex) { throw ex; }
+                catch (Exception ex) { throw ex; }
+            });
         }
     }
 }

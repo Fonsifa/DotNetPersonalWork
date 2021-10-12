@@ -63,16 +63,7 @@ namespace ChatWork.Forms
                 Msg_Box.Text = MsgHis + Program.clientService.Msg;
             }
         }
-        //异步等待信号
-        private async Task<bool> WaitSignal()
-        {
-            return await Task.Run(() =>
-            {
-                while (string.IsNullOrEmpty(Program.clientService.State)) { };
-                return Program.clientService.State.Contains("Succ");
-            });
-        }
-        private void Send_button_Click(object sender, EventArgs e)
+        private async void Send_button_Click(object sender, EventArgs e)
         {
             string Msg = MsgSend_Box.Text.Trim();
             MsgSend_Box.Text = null;
@@ -81,15 +72,9 @@ namespace ChatWork.Forms
             else if (Msg.StartsWith("文件"))//发送文件
             {
                 string[] ss = Msg.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                Program.clientService.SendFile(ss[1]);
-                new Action(async () =>
-                {
-                    Task<bool> task = WaitSignal();
-                    if (!await task)
-                    {
-                        MessageBox.Show("发送失败");
-                    }
-                })();
+                var re= await Program.clientService.SendFile(ss[1]);
+                if(!re)
+                MessageBox.Show("发送失败");
             }
             else//发送正常消息
             {
@@ -106,8 +91,8 @@ namespace ChatWork.Forms
         }
         private async void Leave_button_Click(object sender, EventArgs e)
         {
-            Program.clientService.LeaveChatRoom(id);
-            if (await WaitSignal())
+            var re=await Program.clientService.LeaveChatRoom(id);
+            if (re)
             {
                 thread.Abort();
                 this.Hide();
